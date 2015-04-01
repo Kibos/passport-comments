@@ -1,149 +1,68 @@
-# Passport
+# passport-comments 
+----------  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;passport的验证过程主要依赖具体的验证策略来实现的，比较常用的有session策略、local策略和github策略等，验证逻辑都是在这些策略类中定义的。passport模块的定义主要包括三个部分：passport类、相关中间件和验证策略，passport自带了session验证策略，如果要使用其他验证策略，需要自行添加。
 
-[![Build](https://travis-ci.org/jaredhanson/passport.png)](https://travis-ci.org/jaredhanson/passport)
-[![Coverage](https://coveralls.io/repos/jaredhanson/passport/badge.png)](https://coveralls.io/r/jaredhanson/passport)
-[![Quality](https://codeclimate.com/github/jaredhanson/passport.png)](https://codeclimate.com/github/jaredhanson/passport)
-[![Dependencies](https://david-dm.org/jaredhanson/passport.png)](https://david-dm.org/jaredhanson/passport)
-[![Tips](http://img.shields.io/gittip/jaredhanson.png)](https://www.gittip.com/jaredhanson/)
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;passport的使用分为五个部分：
+1. 首先必须通过`app.use(passport.initialize())`对passport进行初始化，否则后面的验证方法无法执行
+2. 在全局范围内添加session验证中间件，`app.use(passport.session());`，这个主要是为了记住用户的登录状态，可以指定session过期时间
+3. 给passport添加验证策略
+4. 在具体的路由上使用第三步中添加的验证中间件
+5. 给passport定义序列化和反序列化函数
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;本文没有对passport进行深入的分析，具体请参考[注释版源码](http://github.com:zjh-neverstop/passport-comments.git)。
+### 1、passport类  
+依赖于 `./framework/connect`  和 `./strategies/session`  
+主要属性：  
+
+        this._key = 'passport';         //挂载在session上的关键字  
+        this._strategies = {};          //保存所有验证策略的对象  
+        this._serializers = [];         //序列化session  
+        this._deserializers = [];       //反序列化session  
+        this._infoTransformers = [];    
+        this._framework = null;         //保存所有中间件的对象  
+        this._userProperty = 'user';    //挂载在req上的关键字 req.user  
+      
+#### Authenticator.prototype.init  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;进行相关初始化，添加authenticate和initialize中间件，添加session验证策略 。给req对象添加login、logout、isAuthenticated和isUnAuthenticated方法
+#### Authenticator.prototype.framework  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;passport暴露的中间件是类似于connect风格的，签名如：`fn(req, res, next)`，而有的框架需要的是不同的签名风格，因此，该方法是用来做适配的，如果使用的是express框架，则不需要调用该方法。将传入的参数保存到this._framework中，参数如下：  
+```js  
+{  
+    initialize: initialize,  
+    authenticate: authenticate  
+}  
+```  
+#### Authenticator.prototype.use  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;添加具体验证策略对象，并保存到this._strategies中，策略对象必须提供名称，例如：
+`passport.use('local',new LocalStrategy(function(username,password,done){ //todo });`
+#### Authenticator.prototype.unuse  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;根据策略名称，删除this._strategies中对应的验证策略对象，例如：`passport.unuse('local');  `
+#### Authenticator.prototype.initialize  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;设置this._userProperty，然后调用this._framework.initialize方法生成一个初始化中间件，并返回该中间件  
+#### Authenticator.prototype.authenticate  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;调用this._framework.authenticate方法生成一个验证中间件，并返回该中间件  
+
+###2、 middleware - 相关中间件  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;主要包括initialize和authenticate，除此之外，在加载的时候还会对req对象定义多个方法
+#### initialize  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;进行相关初始化工作，将session中的passport对象(req.session[passport._key])挂载到req._passport上，如果session中没有保存相关信息或者session为空，则req_passport={}  
+
+#### authenticate  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;给验证策略添加了额外的处理方法，如：success、fail、redirect、pass、error，主要目的是对验证状态进行保存。有了这些方法，我们就可以只关心验证逻辑的定义，在验证成功或失败后只需调用这些预先定好的方法即可。该中间件对请求按照指定的策略进行验证，如果验证通过，调用success方法，用户就会登录成功，相关用户信息将被挂载到req.user上同时会生成一个session对象，如果验证失败，将会向客户端发送未授权响应。 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;该中间件需要注意的地方就是验证回调，如果提供了回调函数，那么将会覆盖默认的处理方式，即：attemp方法，此时需要自行调用req.login
+
+	  //提供了回调函数的情况
+	  app.get('/login', function(req, res, next) {
+		  passport.authenticate('local', function(err, user, info) {
+		    if (err) { return next(err); }
+		    if (!user) { return res.redirect('/login'); }
+		    req.logIn(user, function(err) {
+		      if (err) { return next(err); }
+		      return res.redirect('/users/' + user.username);
+		    });
+		  })(req, res, next);
+		});
 
 
-Passport is [Express](http://expressjs.com/)-compatible authentication
-middleware for [Node.js](http://nodejs.org/).
 
-Passport's sole purpose is to authenticate requests, which it does through an
-extensible set of plugins known as _strategies_.  Passport does not mount
-routes or assume any particular database schema, which maximizes flexiblity and
-allows application-level decisions to be made by the developer.  The API is
-simple: you provide Passport a request to authenticate, and Passport provides
-hooks for controlling what occurs when authentication succeeds or fails.
 
-## Install
-
-    $ npm install passport
-
-## Usage
-
-#### Strategies
-
-Passport uses the concept of strategies to authenticate requests.  Strategies
-can range from verifying username and password credentials, delegated
-authentication using [OAuth](http://oauth.net/) (for example, via [Facebook](http://www.facebook.com/)
-or [Twitter](http://twitter.com/)), or federated authentication using [OpenID](http://openid.net/).
-
-Before authenticating requests, the strategy (or strategies) used by an
-application must be configured.
-
-    passport.use(new LocalStrategy(
-      function(username, password, done) {
-        User.findOne({ username: username }, function (err, user) {
-          if (err) { return done(err); }
-          if (!user) { return done(null, false); }
-          if (!user.verifyPassword(password)) { return done(null, false); }
-          return done(null, user);
-        });
-      }
-    ));
-
-#### Sessions
-
-Passport will maintain persistent login sessions.  In order for persistent
-sessions to work, the authenticated user must be serialized to the session, and
-deserialized when subsequent requests are made.
-
-Passport does not impose any restrictions on how your user records are stored.
-Instead, you provide functions to Passport which implements the necessary
-serialization and deserialization logic.  In a typical application, this will be
-as simple as serializing the user ID, and finding the user by ID when
-deserializing.
-
-    passport.serializeUser(function(user, done) {
-      done(null, user.id);
-    });
-
-    passport.deserializeUser(function(id, done) {
-      User.findById(id, function (err, user) {
-        done(err, user);
-      });
-    });
-
-#### Middleware
-
-To use Passport in an [Express](http://expressjs.com/) or
-[Connect](http://senchalabs.github.com/connect/)-based application, configure it
-with the required `passport.initialize()` middleware.  If your application uses
-persistent login sessions (recommended, but not required), `passport.session()`
-middleware must also be used.
-
-    app.configure(function() {
-      app.use(express.static(__dirname + '/../../public'));
-      app.use(express.cookieParser());
-      app.use(express.bodyParser());
-      app.use(express.session({ secret: 'keyboard cat' }));
-      app.use(passport.initialize());
-      app.use(passport.session());
-      app.use(app.router);
-    });
-
-#### Authenticate Requests
-
-Passport provides an `authenticate()` function, which is used as route
-middleware to authenticate requests.
-
-    app.post('/login', 
-      passport.authenticate('local', { failureRedirect: '/login' }),
-      function(req, res) {
-        res.redirect('/');
-      });
-
-## Strategies
-
-Passport has a comprehensive set of **over 140** authentication strategies
-covering social networking, enterprise integration, API services, and more.
-The [complete list](https://github.com/jaredhanson/passport/wiki/Strategies) is
-available on the [wiki](https://github.com/jaredhanson/passport/wiki).
-
-The following table lists commonly used strategies:
-
-|Strategy                                                       | Protocol                 |Developer                                       |
-|---------------------------------------------------------------|--------------------------|------------------------------------------------|
-|[Local](https://github.com/jaredhanson/passport-local)         | HTML form                |[Jared Hanson](https://github.com/jaredhanson)  |
-|[OpenID](https://github.com/jaredhanson/passport-openid)       | OpenID                   |[Jared Hanson](https://github.com/jaredhanson)  |
-|[BrowserID](https://github.com/jaredhanson/passport-browserid) | BrowserID                |[Jared Hanson](https://github.com/jaredhanson)  |
-|[Facebook](https://github.com/jaredhanson/passport-facebook)   | OAuth 2.0                |[Jared Hanson](https://github.com/jaredhanson)  |
-|[Google](https://github.com/jaredhanson/passport-google)       | OpenID                   |[Jared Hanson](https://github.com/jaredhanson)  |
-|[Google](https://github.com/jaredhanson/passport-google-oauth) | OAuth / OAuth 2.0        |[Jared Hanson](https://github.com/jaredhanson)  |
-|[Twitter](https://github.com/jaredhanson/passport-twitter)     | OAuth                    |[Jared Hanson](https://github.com/jaredhanson)  |
-
-## Examples
-
-- For a complete, working example, refer to the [login example](https://github.com/jaredhanson/passport-local/tree/master/examples/login)
-included in [passport-local](https://github.com/jaredhanson/passport-local).
-- **Local Strategy**: Refer to this [tutorial](http://mherman.org/blog/2013/11/11/user-authentication-with-passport-dot-js/) on setting up user authentication via LocalStrategy (`passport-local`), including a working example found on this [repo](https://github.com/mjhea0/passport-local).
-- **Social Authentication**: Refer to this [tutorial](http://mherman.org/blog/2013/11/10/social-authentication-with-passport-dot-js/) for setting up various social authentication strategies, including a working example found on this [repo](https://github.com/mjhea0/passport-examples).
-
-## Related Modules
-
-- [Locomotive](https://github.com/jaredhanson/locomotive) — Powerful MVC web framework
-- [OAuthorize](https://github.com/jaredhanson/oauthorize) — OAuth service provider toolkit
-- [OAuth2orize](https://github.com/jaredhanson/oauth2orize) — OAuth 2.0 authorization server toolkit
-- [connect-ensure-login](https://github.com/jaredhanson/connect-ensure-login)  — middleware to ensure login sessions
-
-The [modules](https://github.com/jaredhanson/passport/wiki/Modules) page on the
-[wiki](https://github.com/jaredhanson/passport/wiki) lists other useful modules
-that build upon or integrate with Passport.
-
-## Tests
-
-    $ npm install
-    $ make test
-
-## Credits
-
-  - [Jared Hanson](http://github.com/jaredhanson)
-
-## License
-
-[The MIT License](http://opensource.org/licenses/MIT)
-
-Copyright (c) 2011-2014 Jared Hanson <[http://jaredhanson.net/](http://jaredhanson.net/)>
-=======
