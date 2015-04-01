@@ -9,7 +9,6 @@
 4. 在具体的路由上使用第三步中添加的验证中间件
 5. 给passport定义序列化和反序列化函数
 
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;本文没有对passport进行深入的分析，具体请参考[注释版源码](http://github.com:zjh-neverstop/passport-comments.git)。
 ### 1、passport类  
 依赖于 `./framework/connect`  和 `./strategies/session`  
 主要属性：  
