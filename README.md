@@ -2,7 +2,8 @@
 ----------  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;passport的验证过程主要依赖具体的验证策略来实现的，比较常用的有session策略、local策略和github策略等，验证逻辑都是在这些策略类中定义的。passport模块的定义主要包括三个部分：passport类、相关中间件和验证策略，passport自带了session验证策略，如果要使用其他验证策略，需要自行添加。
 
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;passport的使用分为五个部分：
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;passport的使用分为五个部分：  
+
 1. 首先必须通过`app.use(passport.initialize())`对passport进行初始化，否则后面的验证方法无法执行
 2. 在全局范围内添加session验证中间件，`app.use(passport.session());`，这个主要是为了记住用户的登录状态，可以指定session过期时间
 3. 给passport添加验证策略
